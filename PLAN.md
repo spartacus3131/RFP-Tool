@@ -68,7 +68,35 @@ V1 delivers the "Day 0" value: when an RFP arrives, the platform immediately ext
 
 ### Core Features
 
-#### 1. RFP Document Upload & Parsing
+#### 1. Quick Scan from Listing URL (Triage Mode)
+
+**User Story:** As a proposal manager, I paste a bidsandtenders.ca URL and get key details in seconds—before deciding whether to download the full RFP documents.
+
+**Why This Matters:**
+- Firms pay per-bid ($138) or annual ($461) to access full RFP documents
+- Quick triage prevents wasting money on obvious NO-GOs
+- Most key dates and scope summaries are visible on listing pages
+
+**Extraction from Listing Page:**
+- Client name (e.g., "Region of Durham")
+- RFP number and title
+- Published date
+- Question deadline
+- Submission deadline
+- Contract duration
+- Scope summary (if visible)
+- Category/classification
+- Trade agreements (CETA, etc.)
+- Eligibility notes (e.g., "Not awarding to U.S. businesses")
+
+**Supported Platforms (V1):**
+- bidsandtenders.ca (most Ontario municipalities)
+- merx.com (future)
+- Other provincial platforms (future)
+
+**Output:** Quick summary card with GO/MAYBE/NO-GO recommendation based on visible criteria. If MAYBE or GO, prompt to upload full PDF for deep analysis.
+
+#### 2. Deep Scan from PDF Upload
 
 **User Story:** As a proposal manager, I upload an RFP PDF and get a structured summary within minutes so I can make initial qualification decisions without reading 100+ pages.
 
@@ -99,7 +127,7 @@ V1 delivers the "Day 0" value: when an RFP arrives, the platform immediately ext
 **Source of Truth Requirement:**
 Every extracted field must link to the specific page/section of the source PDF. Users click any field to see the highlighted original text.
 
-#### 2. Sub-Consultant Matching
+#### 3. Sub-Consultant Matching
 
 **User Story:** As a project manager, I see on Day 0 which external sub-consultants I need and have contact info for our preferred partners ready to engage.
 
@@ -140,7 +168,7 @@ Discipline:
 - Structural Engineering
 - Landscape Architecture
 
-#### 3. Compliance Gatekeeper
+#### 4. Compliance Gatekeeper
 
 **User Story:** As a proposal manager, I get an immediate pass/fail check on whether we meet mandatory requirements before investing time in evaluation.
 
@@ -154,7 +182,7 @@ Discipline:
 
 **Output:** Binary PASS/FAIL with specific failures highlighted and linked to RFP clause.
 
-#### 4. Fuzzy Budget Matching (Key Differentiator)
+#### 5. Fuzzy Budget Matching (Key Differentiator)
 
 **User Story:** As a proposal manager, I want to see if this RFP project appears in the client's capital budget, what the approved funding is, and what the budget justification says—so I understand the "backstory" and can speak to the client's real priorities.
 
@@ -188,7 +216,7 @@ Show the matched budget PDF with highlighted line item. User can verify the matc
 - Semantic matching using vector embeddings
 - Confidence score for matches
 
-#### 5. Human-in-the-Loop Review Interface
+#### 6. Human-in-the-Loop Review Interface
 
 **User Story:** As a senior reviewer, I can verify AI extractions, correct errors, add context, and approve the summary before it's shared with the team.
 
@@ -200,7 +228,7 @@ Show the matched budget PDF with highlighted line item. User can verify the matc
 - Approve/reject extraction before sharing
 - Export to standardized format (PDF summary, Excel, or integration)
 
-#### 6. Project Dashboard
+#### 7. Project Dashboard
 
 **User Story:** As a practice leader, I see all active RFP evaluations in one view with status and key dates.
 
@@ -481,12 +509,13 @@ GET    /api/rfps                    # List all RFPs with filters
 
 ## Build Sequence
 
-### Sprint 1: Foundation (Week 1-2)
+### Sprint 1: Foundation + Quick Scan (Week 1-2)
 - [ ] Project setup (Docker, FastAPI, React scaffolding)
 - [ ] Database schema (PostgreSQL + pgvector)
+- [ ] **Quick Scan: bidsandtenders.ca scraper** (listing page extraction)
+- [ ] Quick Scan UI: paste URL → get summary card
 - [ ] File upload endpoint (PDF storage)
 - [ ] Basic PDF text extraction (PyMuPDF)
-- [ ] Simple frontend: upload + display raw text
 
 ### Sprint 2: LLM Extraction (Week 3-4)
 - [ ] Claude API integration
