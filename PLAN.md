@@ -54,8 +54,8 @@ The platform is the operating system for strategic pursuits—connecting market 
 
 | Phase | Name | Focus | Value |
 |-------|------|-------|-------|
-| V1 | RFP Tool | Day 0 extraction + sub-consultant matching | Time savings |
-| V2 | Intelligence Feed | Budget matching + EA pipeline + go/no-go scoring | Revenue generation |
+| V1 | RFP Tool | Day 0 extraction + sub-consultant matching + **fuzzy budget matching** | Time savings + differentiator |
+| V2 | Intelligence Feed | EA pipeline + go/no-go scoring framework | Revenue generation |
 | V3 | Relationship Engine | CRM sync + touchpoint alerts + win/loss learning | Account protection |
 
 ---
@@ -154,7 +154,41 @@ Discipline:
 
 **Output:** Binary PASS/FAIL with specific failures highlighted and linked to RFP clause.
 
-#### 4. Human-in-the-Loop Review Interface
+#### 4. Fuzzy Budget Matching (Key Differentiator)
+
+**User Story:** As a proposal manager, I want to see if this RFP project appears in the client's capital budget, what the approved funding is, and what the budget justification says—so I understand the "backstory" and can speak to the client's real priorities.
+
+**Why This Matters:**
+- Competitors only summarize RFPs—they don't connect to funding context
+- Budget line item names often don't match RFP titles (hence "fuzzy" matching)
+- Example: "Reconstruction of 7th Line" (budget) → "Arterial Road Improvements" (RFP)
+- Understanding budget justification helps craft winning proposals
+
+**How It Works:**
+1. Extract client name from RFP (e.g., "City of Brampton")
+2. Search for client's published capital budget PDF online
+3. Parse budget document for project line items
+4. Use semantic/vector search to match RFP scope to budget line items
+5. Display matched budget info alongside RFP extraction
+
+**Data Extracted from Capital Budgets:**
+- Project name/ID in budget
+- Approved funding amount
+- Funding type (Planning, Engineering/Design, Construction)
+- Multi-year funding breakdown
+- Project justification / rationale
+- Department / service area
+
+**Source of Truth Requirement:**
+Show the matched budget PDF with highlighted line item. User can verify the match is correct or mark as "no match found."
+
+**MVP Scope:**
+- Support Ontario municipal capital budgets (most common format)
+- Manual budget PDF upload initially (auto-fetch in V2)
+- Semantic matching using vector embeddings
+- Confidence score for matches
+
+#### 5. Human-in-the-Loop Review Interface
 
 **User Story:** As a senior reviewer, I can verify AI extractions, correct errors, add context, and approve the summary before it's shared with the team.
 
@@ -166,7 +200,7 @@ Discipline:
 - Approve/reject extraction before sharing
 - Export to standardized format (PDF summary, Excel, or integration)
 
-#### 5. Project Dashboard
+#### 6. Project Dashboard
 
 **User Story:** As a practice leader, I see all active RFP evaluations in one view with status and key dates.
 
@@ -475,14 +509,22 @@ GET    /api/rfps                    # List all RFPs with filters
 - [ ] Sub-consultant management UI
 - [ ] Integration into RFP analysis view
 
-### Sprint 5: Dashboard & Polish (Week 9-10)
+### Sprint 5: Fuzzy Budget Matching (Week 9-10)
+- [ ] Capital budget PDF upload and parsing
+- [ ] Budget line item extraction (project name, funding, justification)
+- [ ] Vector embeddings for budget items (pgvector)
+- [ ] Semantic matching: RFP scope → budget line items
+- [ ] Budget match UI (show matched budget with confidence score)
+- [ ] Source linking (highlight matched budget PDF section)
+
+### Sprint 6: Dashboard & Polish (Week 11-12)
 - [ ] Dashboard with RFP list, stats, filters
 - [ ] Key dates timeline view
 - [ ] Export functionality (PDF summary, Excel)
 - [ ] Compliance checker logic
 - [ ] Docker compose for full stack deployment
 
-### Sprint 6: Testing & Hardening (Week 11-12)
+### Sprint 7: Testing & Hardening (Week 13-14)
 - [ ] End-to-end testing with real RFPs
 - [ ] Error handling and edge cases
 - [ ] Performance optimization (large PDFs)
@@ -502,12 +544,6 @@ Six-factor scoring with editable weights:
 5. Budget & funding clarity (10 pts) - confirmed in capital plan
 
 Score buckets: 75-100 Strong GO, 50-74 Cautious GO, 25-49 Weak GO, 0-24 NO-GO
-
-### Fuzzy Budget Matching
-- Ingest municipal capital budget PDFs
-- Extract project line items with funding amounts
-- Semantic matching: "Reconstruction of 7th Line" (budget) → "Arterial Road Improvements" (RFP)
-- Show budget backstory for each RFP
 
 ### EA Pipeline Mining
 - Monitor Ontario ERO for EA notices
