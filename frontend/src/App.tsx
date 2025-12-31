@@ -3,6 +3,7 @@ import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import QuickScan from './pages/QuickScan'
 import RFPList from './pages/RFPList'
+import RFPDetail from './pages/RFPDetail'
 import SubConsultants from './pages/SubConsultants'
 
 function App() {
@@ -12,6 +13,7 @@ function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/quick-scan" element={<QuickScan />} />
         <Route path="/rfps" element={<RFPList />} />
+        <Route path="/rfps/:id" element={<RFPDetail />} />
         <Route path="/subconsultants" element={<SubConsultants />} />
       </Routes>
     </Layout>

@@ -96,6 +96,8 @@ V1 delivers the "Day 0" value: when an RFP arrives, the platform immediately ext
 
 **Output:** Quick summary card with GO/MAYBE/NO-GO recommendation based on visible criteria. If MAYBE or GO, prompt to upload full PDF for deep analysis.
 
+**Enhancement (V2):** List downloadable attachments from listing page (background studies, drawings, addenda) for one-click fetch.
+
 #### 2. Deep Scan from PDF Upload
 
 **User Story:** As a proposal manager, I upload an RFP PDF and get a structured summary within minutes so I can make initial qualification decisions without reading 100+ pages.
@@ -216,7 +218,44 @@ Show the matched budget PDF with highlighted line item. User can verify the matc
 - Semantic matching using vector embeddings
 - Confidence score for matches
 
-#### 6. Human-in-the-Loop Review Interface
+#### 6. Supplementary Data Fetching (V2)
+
+**User Story:** As a proposal manager, I want the platform to surface relevant background documents and prior studies so I can understand the project's full context without manual searching.
+
+**Why This Matters:**
+- RFPs often reference background data as downloadable attachments (drawings, past studies, site assessments)
+- Related open data exists online (previous EAs, council reports, municipal studies)
+- Understanding historical context improves proposal quality and shows client you've done homework
+- Competitors miss this - they only analyze the RFP document itself
+
+**Two Data Sources:**
+
+1. **RFP Attachments (from listing page):**
+   - Parse bidsandtenders.ca for downloadable files
+   - Categories: Background studies, drawings, addenda, reference documents
+   - One-click download and auto-import
+   - Link attachments to parent RFP for easy access
+
+2. **Open Data Discovery (from web):**
+   - Search for related Environmental Assessments (Ontario ERO)
+   - Find council reports and staff recommendations
+   - Locate prior studies for same location/project
+   - Surface relevant capital budget documents
+
+**How It Works:**
+1. Extract key identifiers from RFP (project name, location, client)
+2. Search municipal websites, ERO, and open data portals
+3. Use semantic matching to rank relevance
+4. Present curated list of potentially relevant documents
+5. User can mark documents as "included in analysis" or "not relevant"
+
+**MVP Scope:**
+- Manual "Find Related Documents" button triggers search
+- Display results with relevance scores
+- Link to external sources (don't store full documents initially)
+- Track which documents user found useful (improves matching over time)
+
+#### 7. Human-in-the-Loop Review Interface
 
 **User Story:** As a senior reviewer, I can verify AI extractions, correct errors, add context, and approve the summary before it's shared with the team.
 
@@ -579,6 +618,12 @@ Score buckets: 75-100 Strong GO, 50-74 Cautious GO, 25-49 Weak GO, 0-24 NO-GO
 - Track project phases (Commencement → Completion)
 - Predict detailed design RFPs 6-24 months out
 - Alert when tracked projects issue RFPs
+
+### Supplementary Data Fetching
+- Parse RFP listing pages for downloadable attachments
+- Auto-discover related open data (ERO, council reports, prior studies)
+- Semantic search for relevant background documents
+- Track document usefulness for improved matching
 
 ### Office 365 Integration
 - SharePoint: pull RFPs from document libraries

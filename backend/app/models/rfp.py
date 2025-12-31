@@ -87,6 +87,11 @@ class RFPDocument(Base):
     # Quick scan recommendation
     quick_scan_recommendation: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # GO, MAYBE, NO_GO
 
+    # PDF text extraction
+    raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    page_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    extraction_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # Vector embedding for semantic search
     embedding: Mapped[Optional[List[float]]] = mapped_column(Vector(1536), nullable=True)
 

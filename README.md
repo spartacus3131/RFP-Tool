@@ -2,90 +2,211 @@
 
 An AI-powered platform that transforms the go/no-go decision process for mid-sized consulting firms. Extract structured data from RFP documents, match required disciplines to sub-consultant pools, and make evidence-based pursuit decisions—all with full source traceability.
 
-## Current Status: Sprint 1 - MVP Foundation
+## Current Status: Sprint 7 - Testing & Hardening
 
-### What's Built (December 30, 2024)
+### What's Built (December 31, 2024)
 
-- **Quick Scan Feature**: Paste a bidsandtenders.ca URL to get instant RFP triage (GO/MAYBE/NO-GO recommendations)
-- **Full Stack Architecture**: FastAPI backend, React frontend, PostgreSQL + pgvector database
-- **Docker Deployment**: Self-hosted three-container stack (frontend, backend, database)
-- **Database Models**: RFP and Sub-Consultant entities with SQLAlchemy 2.x
-- **PDF Upload Scaffold**: UI and endpoint ready for PDF processing
+**Core Features:**
+- **Quick Scan**: Paste a bidsandtenders.ca URL for instant RFP triage (GO/MAYBE/NO-GO)
+- **PDF Upload & Extraction**: Upload RFP PDFs, extract text with PyMuPDF
+- **Claude AI Integration**: Structured extraction of 11+ fields with source page linking
+- **Human Review UI**: Side-by-side view of extractions with GO/NO-GO decisions
+- **Sub-Consultant Matching**: Match RFP disciplines to your partner registry
+- **Budget Matching**: Fuzzy match RFPs to capital budget line items
+- **Dashboard**: Stats, upcoming deadlines, recent RFPs, quick actions
 
-### Running the Platform
+**Infrastructure:**
+- Docker Compose stack (frontend, backend, PostgreSQL + pgvector)
+- Toast notifications for user feedback
+- Filter controls on RFP list (status, client search)
 
+## Quick Start
+
+### Prerequisites
+- Docker and Docker Compose
+- Anthropic API key (for Claude AI extraction)
+
+### Setup
+
+1. **Clone and configure:**
 ```bash
-# Start all services
-cd docker
-docker-compose up -d
+git clone <repository>
+cd RFP-Tool
 
-# Access the application
-Frontend: http://localhost:5173
-Backend API: http://localhost:8000
-API Docs: http://localhost:8000/docs
-
-# View logs
-docker-compose logs -f backend
-
-# Stop services
-docker-compose down
+# Create .env file in project root
+cat > .env << EOF
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/rfp_tool
+ANTHROPIC_API_KEY=your-api-key-here
+UPLOAD_DIR=./uploads
+EOF
 ```
 
-### Tech Stack
+2. **Start the platform:**
+```bash
+docker compose -f docker/docker-compose.yml up -d
+```
 
-- **Frontend**: React + TypeScript + Tailwind CSS + Vite
-- **Backend**: Python 3.11 + FastAPI + SQLAlchemy 2.x
-- **Database**: PostgreSQL 15 + pgvector
-- **Deployment**: Docker Compose (self-hosted first)
-- **PDF Processing**: PyMuPDF (planned for Sprint 2)
-- **LLM**: Claude API integration (planned for Sprint 2)
+3. **Access the application:**
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
 
-## Features Roadmap
+### Common Commands
 
-### Sprint 1: Foundation + Quick Scan (CURRENT)
-- [x] Docker Compose stack
-- [x] Database models (RFP, Sub-Consultant)
-- [x] Quick Scan from bidsandtenders.ca URL
-- [x] Basic React UI with routing
-- [ ] PDF text extraction with PyMuPDF
+```bash
+# View logs
+docker compose -f docker/docker-compose.yml logs -f backend
 
-### Sprint 2: LLM Extraction (NEXT)
-- [ ] Claude API integration
-- [ ] Structured data extraction from PDFs
-- [ ] Source linking (extractions → PDF page/location)
-- [ ] Frontend display of AI-extracted fields
+# Rebuild after code changes
+docker compose -f docker/docker-compose.yml up -d --build
 
-### Sprint 3: Sub-Consultant Matching
-- [ ] Discipline taxonomy
-- [ ] Matching algorithm (RFP disciplines → sub pool)
-- [ ] Sub-consultant CRUD interface
+# Stop all services
+docker compose -f docker/docker-compose.yml down
 
-### Sprint 4: Go/No-Go Scoring Engine
-- [ ] Six-factor scoring framework
-- [ ] Editable weights and decision logic
-- [ ] Score visualization
+# Reset database (warning: deletes all data)
+docker compose -f docker/docker-compose.yml down -v
+docker compose -f docker/docker-compose.yml up -d
+```
 
-### Sprint 5: Review UI + Evidence Panel
-- [ ] Side-by-side view (extractions | PDF viewer)
-- [ ] Click-to-source highlighting
-- [ ] Edit/verify interface with audit trail
+## Features Guide
 
-### Sprint 6: Fuzzy Budget Matching
-- [ ] Capital budget PDF parsing
-- [ ] Vector-based semantic matching
-- [ ] Budget context display
+### 1. Quick Scan (Triage)
+Paste a bidsandtenders.ca URL to get key details before downloading the full RFP:
+- Client name, RFP number, deadlines
+- Scope summary, categories
+- GO/MAYBE/NO-GO recommendation
 
-### Sprint 7: Polish + Export
-- [ ] Dashboard with stats and filters
-- [ ] Export to PDF/Excel
-- [ ] Documentation and deployment guides
+### 2. PDF Upload & AI Extraction
+Upload RFP PDFs for deep analysis:
+1. Go to RFPs page, click "Upload PDF"
+2. Click on the uploaded RFP
+3. Click "Extract with Claude" to run AI extraction
+4. Review extracted fields with source page links
+
+**Extracted Fields:**
+- Client name and contact
+- RFP number, dates (published, questions, submission)
+- Scope summary (AI-generated)
+- Required internal/external disciplines
+- Evaluation criteria and weights
+- Risk flags (insurance, bonding, payment terms)
+
+### 3. Sub-Consultant Management
+Manage your partner registry at `/sub-consultants`:
+- Add/Edit/Delete sub-consultants
+- Organize by discipline and tier (Tier 1 = preferred, Tier 2 = backup)
+- Track win rates and past projects
+- Auto-match to RFP requirements
+
+### 4. Budget Matching
+Upload client capital budgets to match RFP scope to funded projects:
+```bash
+# Upload via API
+curl -X POST "http://localhost:8000/api/budgets/upload?municipality=City%20Name&fiscal_year=2025" \
+  -F "file=@budget.pdf"
+
+# Extract line items
+curl -X POST "http://localhost:8000/api/budgets/{budget_id}/extract"
+```
+
+### 5. GO/NO-GO Decisions
+On any RFP detail page:
+- Review all extracted fields
+- See matched sub-consultants
+- View budget matches (if available)
+- Click GO or NO-GO to record decision with notes
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 18 + TypeScript + Tailwind CSS + Vite |
+| Backend | Python 3.11 + FastAPI + SQLAlchemy 2.x (async) |
+| Database | PostgreSQL 16 + pgvector |
+| AI | Claude API (Sonnet model) |
+| PDF | PyMuPDF |
+| Deployment | Docker Compose |
+
+## Project Structure
+
+```
+RFP-Tool/
+├── backend/
+│   ├── app/
+│   │   ├── api/           # FastAPI route handlers
+│   │   │   ├── rfp.py
+│   │   │   ├── dashboard.py
+│   │   │   ├── subconsultants.py
+│   │   │   ├── budgets.py
+│   │   │   └── quick_scan.py
+│   │   ├── models/        # SQLAlchemy models
+│   │   │   ├── rfp.py
+│   │   │   ├── subconsultant.py
+│   │   │   └── budget.py
+│   │   ├── services/      # Business logic
+│   │   │   ├── pdf_extractor.py
+│   │   │   └── budget_extractor.py
+│   │   └── llm/           # Claude API integration
+│   │       ├── client.py
+│   │       └── prompts.py
+│   ├── main.py
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── pages/         # Page components
+│   │   ├── components/    # Reusable UI components
+│   │   └── api/           # API client
+│   └── package.json
+├── docker/
+│   ├── docker-compose.yml
+│   ├── Dockerfile.backend
+│   └── Dockerfile.frontend
+├── .env                   # Environment variables (create this)
+├── PLAN.md               # Full product specification
+├── TODO.md               # Current tasks and progress
+└── CLAUDE.md             # AI coding context
+```
+
+## API Reference
+
+### RFP Endpoints
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/rfp/upload` | Upload RFP PDF |
+| GET | `/api/rfp/{id}` | Get RFP summary |
+| GET | `/api/rfp/{id}/detail` | Get RFP with all extractions |
+| POST | `/api/rfp/{id}/extract` | Run Claude AI extraction |
+| POST | `/api/rfp/{id}/decide` | Record GO/NO-GO decision |
+
+### Dashboard Endpoints
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/dashboard/` | Get stats and recent RFPs |
+| GET | `/api/dashboard/rfps` | List RFPs with filters |
+| GET | `/api/dashboard/upcoming-deadlines` | Get upcoming submission deadlines |
+
+### Sub-Consultant Endpoints
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/subconsultants/` | List all sub-consultants |
+| POST | `/api/subconsultants/` | Create sub-consultant |
+| PUT | `/api/subconsultants/{id}` | Update sub-consultant |
+| DELETE | `/api/subconsultants/{id}` | Delete sub-consultant |
+| GET | `/api/subconsultants/match` | Match by disciplines |
+
+### Budget Endpoints
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/budgets/upload` | Upload capital budget PDF |
+| POST | `/api/budgets/{id}/extract` | Extract line items with AI |
+| GET | `/api/budgets/match/{rfp_id}` | Match RFP to budget items |
 
 ## Key Design Decisions
 
 1. **Self-Hosted First**: Target market requires data sovereignty. Docker Compose is the primary deployment model.
-2. **Source of Truth**: Every AI extraction links to the exact PDF location. Users must be able to verify all suggestions.
+2. **Source of Truth**: Every AI extraction links to the exact PDF page. Users can verify all suggestions.
 3. **Human-in-the-Loop**: AI provides suggestions, humans verify and decide. No auto-commit of decisions.
-4. **Two-Phase Workflow**: Quick Scan (triage) → Deep Scan (full PDF analysis). Prevents wasted spend on document downloads.
+4. **Two-Phase Workflow**: Quick Scan (triage) then Deep Scan (full PDF analysis).
 
 ## Target Market
 
@@ -95,45 +216,53 @@ Mid-sized consulting firms (15-150 employees) in:
 - Management consulting
 - IT services
 
-**Primary Geography**: Ontario, Canada (expanding to other provinces)
+**Primary Geography**: Ontario, Canada
 
-## Project Structure
+## Development
 
-```
-/backend          FastAPI application
-  /app
-    /api          Route handlers
-    /models       SQLAlchemy models
-    /services     Business logic
-    /llm          LLM integration (Sprint 2)
-  main.py         App entry point
-  requirements.txt
+### Local Development (without Docker)
 
-/frontend         React application
-  /src
-    /components   Reusable components
-    /pages        Page-level components
-    /services     API client
-  package.json
-
-/docker           Docker configuration
-  docker-compose.yml
-  Dockerfile.backend
-  Dockerfile.frontend
-
-PLAN.md           Full product specification
-CLAUDE.md         AI context and patterns
+**Backend:**
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
 ```
 
-## Documentation
+**Frontend:**
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-- **PLAN.md**: Complete product vision, architecture, and 7-sprint roadmap
-- **CLAUDE.md**: AI coding context (architecture, patterns, key commands)
-- **RFP-Tool-session-summary.md**: Session-by-session development history
+### Testing
+```bash
+# Run backend tests
+cd backend && pytest
 
-## Contributing
+# Run frontend tests
+cd frontend && npm test
+```
 
-This is a private project in active development. See `TODO.md` for next steps.
+## Troubleshooting
+
+### "ANTHROPIC_API_KEY not set"
+Ensure your `.env` file exists in the project root with a valid API key.
+
+### "Connection refused" errors
+Make sure all Docker containers are running:
+```bash
+docker compose -f docker/docker-compose.yml ps
+```
+
+### PDF extraction fails
+Check the backend logs for specific errors:
+```bash
+docker compose -f docker/docker-compose.yml logs backend
+```
 
 ## License
 

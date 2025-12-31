@@ -1,144 +1,132 @@
-# TODO - Next Session
+# TODO - RFP Intelligence Platform
 
-## Immediate Next Steps
+## Completed Sprints
 
-### Sprint 1 Completion
-- [ ] Add PyMuPDF to requirements.txt
-- [ ] Implement PDF text extraction in `/api/rfp/upload` endpoint
-  - Extract text from all pages
-  - Store in `rfps.raw_text` field
-  - Return extraction status (success/failed + page count)
-- [ ] Test PDF upload → text extraction with a real RFP document
-- [ ] Update frontend Upload page to show extraction status
+### Sprint 1: Foundation + Quick Scan ✓
+- [x] Docker Compose stack (Frontend, Backend, PostgreSQL + pgvector)
+- [x] Quick Scan from bidsandtenders.ca URL
+- [x] PDF upload with PyMuPDF text extraction
+- [x] Store raw_text, page_count in database
 
-### Sprint 2 Kickoff (Claude API Integration)
-- [ ] Set up Claude API credentials in `.env`
-- [ ] Create `/backend/app/llm/prompts.py` for structured extraction prompts
-- [ ] Create `/backend/app/llm/client.py` for Claude API client
-- [ ] Implement extraction endpoint: `POST /api/rfp/{id}/extract`
-  - Send PDF text + extraction prompt to Claude
-  - Parse JSON response
-  - Store extractions with source linking
-- [ ] Create Extraction model in database
-  - `field_name`, `extracted_value`, `confidence`, `source_page`, `source_text`, `source_bbox`
-- [ ] Test with 2-3 real RFP documents (50-200 pages each)
+### Sprint 2: LLM Extraction ✓
+- [x] Claude API integration (Sonnet model)
+- [x] Structured extraction prompts with source linking
+- [x] Extract: client_name, rfp_number, dates, scope, disciplines, evaluation criteria, risk flags
+- [x] `/api/rfp/{id}/extract` endpoint
+- [x] Tested with real 222-page RFP (Ministry of Transportation Ontario)
 
-## Questions to Answer
+### Sprint 3: Human-in-the-Loop Review UI ✓
+- [x] RFPDetail page with extracted fields display
+- [x] Source page linking (click field to see source page)
+- [x] GO/NO-GO decision buttons with notes
+- [x] `/api/rfp/{id}/detail` endpoint for full extractions
+- [x] Route navigation from RFP list
 
-### Technical Decisions
-1. **Claude API tier**: Should we use Opus (more accurate, slower, expensive) or Sonnet (faster, cheaper) for extraction?
-   - Consider: Opus for complex RFPs (>100 pages), Sonnet for simple ones?
+### Sprint 4: Sub-Consultant Matching ✓
+- [x] SubConsultant model with discipline and tier
+- [x] `/api/subconsultants/match` endpoint
+- [x] Seeded 6 sample sub-consultants
+- [x] Sub-consultant cards in RFP detail view
+- [x] Match by extracted external disciplines
 
-2. **Text extraction strategy**: Extract full PDF upfront or page-by-page on demand?
-   - Upfront: Better for LLM context, but storage intensive
-   - On-demand: Less storage, but slower LLM calls
+### Sprint 5: Fuzzy Budget Matching ✓
+- [x] CapitalBudget and BudgetLineItem models
+- [x] Budget PDF upload and text extraction
+- [x] Claude-powered budget line item extraction
+- [x] Keyword + semantic matching (SequenceMatcher)
+- [x] `/api/budgets/match/{rfp_id}` endpoint
+- [x] Budget match UI in RFP detail page
 
-3. **Scanned PDFs**: How do we handle RFPs that are scanned images (no text layer)?
-   - PyMuPDF alone won't work - need OCR (Tesseract? Azure CV?)
-   - Should we support this in Sprint 2 or defer to later?
+## Current: Sprint 6 - Dashboard & Polish
 
-### Product Decisions
-1. **Extraction fields priority**: Which fields should we extract first?
-   - Suggested: Client name, submission deadline, scope summary, required disciplines
-   - Or: All fields from PLAN.md at once?
+### Dashboard Enhancements
+- [ ] Stats cards (total RFPs, GO/NO-GO counts, pending decisions)
+- [ ] Key dates timeline (submissions due this week/month)
+- [ ] Filter by status, client, discipline
+- [ ] Quick stats visualization
 
-2. **Confidence thresholds**: What confidence score qualifies an extraction as "verified"?
-   - Low confidence → require human review
-   - High confidence → auto-approve?
-   - Or: Always require human review in V1?
+### Export Functionality
+- [ ] Export RFP summary as PDF
+- [ ] Export to Excel (extractions + decisions)
 
-## Dependencies/Blockers
+### Compliance Checker
+- [ ] Define compliance requirements (insurance, WSIB, licenses)
+- [ ] Check RFP requirements against firm capabilities
+- [ ] Display PASS/FAIL checklist
 
-### External Dependencies
-- **Claude API Key**: Need to create Anthropic account and get API key
-  - URL: https://console.anthropic.com/
-  - Estimated cost: ~$0.50-2.00 per RFP extraction (depending on length and model)
+### Polish
+- [ ] Error handling improvements
+- [ ] Loading states throughout UI
+- [ ] Empty state designs
+- [ ] Mobile responsiveness
 
-### Data Dependencies
-- **Real RFP Documents**: Need 5-10 sample RFPs for testing
-  - Source: bidsandtenders.ca (can download from Quick Scan results)
-  - Range: Mix of simple (20-page) and complex (150-page) documents
-  - Variety: Different municipalities, project types
+## Sprint 7: Testing & Hardening (Future)
 
-### None Blocking
-- No current blockers preventing Sprint 2 work
+### End-to-End Testing
+- [ ] Test with 5-10 diverse RFPs
+- [ ] Measure extraction accuracy
+- [ ] Performance benchmarking (large PDFs)
 
-## Context for Next Session
+### Security & Documentation
+- [ ] Security review (input validation, API auth)
+- [ ] User documentation
+- [ ] Deployment guide
 
-### Where We Left Off
-Sprint 1 is 95% complete. All three Docker containers are running successfully:
-- Frontend (React) on port 5173
-- Backend (FastAPI) on port 8000
-- Database (PostgreSQL + pgvector) on port 5432
+## Architecture Summary
 
-Quick Scan feature is fully functional and tested with Durham Region RFP from bidsandtenders.ca.
+```
+Docker Compose Stack:
+├── Frontend (React + TypeScript) - port 5173
+├── Backend (FastAPI + Python) - port 8000
+└── Database (PostgreSQL + pgvector) - port 5432
 
-PDF upload UI exists, but the backend endpoint only saves the file - it doesn't extract text yet.
+Key Files:
+├── backend/
+│   ├── app/api/           # FastAPI route handlers
+│   ├── app/models/        # SQLAlchemy models
+│   ├── app/services/      # Business logic
+│   └── app/llm/           # Claude API integration
+└── frontend/
+    ├── src/pages/         # Page components
+    └── src/api/client.ts  # API client
+```
 
-### Why We Made Key Decisions
+## Running the Project
 
-**Docker Compose for deployment**: Target market (AEC consulting) requires self-hosted deployment due to data sovereignty concerns. Cloud-only SaaS would be a non-starter.
+```bash
+# Start all services
+docker compose -f docker/docker-compose.yml up -d
 
-**Two-phase workflow (Quick Scan → Deep Scan)**: Firms pay per-bid to download RFP documents. Quick triage from listing page prevents wasted spend on obvious NO-GOs before paying for full document.
+# View logs
+docker compose -f docker/docker-compose.yml logs -f backend
 
-**PostgreSQL + pgvector**: Keeps relational data (RFPs, sub-consultants) and vector search (fuzzy budget matching) in one database. Simpler operations than separate vector DB.
+# Rebuild after changes
+docker compose -f docker/docker-compose.yml up -d --build
 
-**SQLAlchemy 2.x**: Future-proof choice, but requires `text()` wrapper for raw SQL (learned this when creating pgvector extension).
+# Access
+# Frontend: http://localhost:5173
+# Backend: http://localhost:8000
+# API Docs: http://localhost:8000/docs
+```
 
-### What to Tackle First
+## API Endpoints
 
-**Priority 1**: Complete PDF text extraction with PyMuPDF
-- This unblocks Sprint 2 (can't send text to Claude API without extracting it first)
-- Should take 1-2 hours max
-- Test with at least one real RFP to confirm it works
+### RFP
+- `POST /api/rfp/upload` - Upload RFP PDF
+- `GET /api/rfp/{id}` - Get RFP summary
+- `GET /api/rfp/{id}/detail` - Get RFP with all extractions
+- `POST /api/rfp/{id}/extract` - Run Claude extraction
+- `POST /api/rfp/{id}/decide` - Record GO/NO-GO decision
 
-**Priority 2**: Set up Claude API integration
-- Create account, get API key, add to `.env`
-- Write structured extraction prompt
-- Test with simple RFP first (20-30 pages)
+### Budgets
+- `POST /api/budgets/upload` - Upload budget PDF
+- `POST /api/budgets/{id}/extract` - Extract line items
+- `GET /api/budgets/match/{rfp_id}` - Match RFP to budget items
 
-**Priority 3**: Implement source linking foundation
-- This is the #1 trust factor - users must see where extractions came from
-- Start simple: just `source_page` field in Sprint 2
-- Add `source_bbox` for click-to-highlight in Sprint 5
+### Sub-Consultants
+- `GET /api/subconsultants/` - List all
+- `GET /api/subconsultants/match?disciplines=X,Y` - Match by discipline
 
-## Testing Plan
-
-### Sprint 1 Completion Test
-1. Upload a real RFP PDF (50+ pages)
-2. Verify text extraction completes without errors
-3. Check database for `raw_text` populated
-4. Confirm page count matches PDF
-
-### Sprint 2 Integration Test
-1. Upload RFP → extract text → send to Claude
-2. Verify Claude returns structured JSON
-3. Check extractions stored in database with source pages
-4. Display extractions in frontend with "AI-suggested" badges
-5. Calculate extraction accuracy on known fields (dates, client name)
-
-### Success Criteria
-- Extract text from 100-page PDF in < 30 seconds
-- Claude API returns structured data in < 60 seconds
-- Extraction accuracy > 90% on key fields (client, dates, scope)
-- Source page numbers map correctly to PDF
-
-## Future Session Reminders
-
-### Code Quality Checks Before Commit
-- [ ] No `console.log` or `print()` debugging statements
-- [ ] No hardcoded API keys or credentials
-- [ ] Type hints on Python functions
-- [ ] TypeScript strict mode errors resolved
-- [ ] Docker containers still build and run
-
-### Documentation to Update
-- [ ] Update this TODO.md with new tasks
-- [ ] Append to RFP-Tool-session-summary.md with session notes
-- [ ] Update CLAUDE.md "Current Workflow Phase" checkboxes
-- [ ] Update README.md "Current Status" section if sprint changes
-
-### Git Workflow
-- Commit message format: `Sprint X: [Feature Name] - Brief description`
-- Always include "What changed" and "Why" in commit body
-- Reference TODO.md tasks in commit messages
+### Dashboard
+- `GET /api/dashboard/` - Stats
+- `GET /api/dashboard/rfps` - List RFPs with filters

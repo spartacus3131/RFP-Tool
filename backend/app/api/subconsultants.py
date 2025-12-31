@@ -182,6 +182,99 @@ async def match_subconsultants(
     return results
 
 
+@router.get("/{sub_id}", response_model=SubConsultantResponse)
+async def get_subconsultant(
+    sub_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a single sub-consultant by ID."""
+    result = await db.execute(select(SubConsultant).where(SubConsultant.id == sub_id))
+    sub = result.scalar_one_or_none()
+
+    if not sub:
+        raise HTTPException(404, "Sub-consultant not found")
+
+    return SubConsultantResponse(
+        id=str(sub.id),
+        company_name=sub.company_name,
+        discipline=sub.discipline,
+        tier=sub.tier.value,
+        primary_contact_name=sub.primary_contact_name,
+        primary_contact_email=sub.primary_contact_email,
+        primary_contact_phone=sub.primary_contact_phone,
+        past_joint_projects=sub.past_joint_projects,
+        win_rate_together=sub.win_rate_together,
+        typical_fee_range_low=sub.typical_fee_range_low,
+        typical_fee_range_high=sub.typical_fee_range_high,
+        capacity_status=sub.capacity_status.value,
+        notes=sub.notes,
+    )
+
+
+@router.put("/{sub_id}", response_model=SubConsultantResponse)
+async def update_subconsultant(
+    sub_id: UUID,
+    updates: SubConsultantCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a sub-consultant."""
+    result = await db.execute(select(SubConsultant).where(SubConsultant.id == sub_id))
+    sub = result.scalar_one_or_none()
+
+    if not sub:
+        raise HTTPException(404, "Sub-consultant not found")
+
+    sub.company_name = updates.company_name
+    sub.discipline = updates.discipline
+    sub.tier = SubConsultantTier(updates.tier)
+    sub.primary_contact_name = updates.primary_contact_name
+    sub.primary_contact_email = updates.primary_contact_email
+    sub.primary_contact_phone = updates.primary_contact_phone
+    sub.past_joint_projects = updates.past_joint_projects
+    sub.win_rate_together = updates.win_rate_together
+    sub.typical_fee_range_low = updates.typical_fee_range_low
+    sub.typical_fee_range_high = updates.typical_fee_range_high
+    sub.notes = updates.notes
+    sub.preferred_project_types = updates.preferred_project_types
+
+    await db.commit()
+    await db.refresh(sub)
+
+    return SubConsultantResponse(
+        id=str(sub.id),
+        company_name=sub.company_name,
+        discipline=sub.discipline,
+        tier=sub.tier.value,
+        primary_contact_name=sub.primary_contact_name,
+        primary_contact_email=sub.primary_contact_email,
+        primary_contact_phone=sub.primary_contact_phone,
+        past_joint_projects=sub.past_joint_projects,
+        win_rate_together=sub.win_rate_together,
+        typical_fee_range_low=sub.typical_fee_range_low,
+        typical_fee_range_high=sub.typical_fee_range_high,
+        capacity_status=sub.capacity_status.value,
+        notes=sub.notes,
+    )
+
+
+@router.delete("/{sub_id}")
+async def delete_subconsultant(
+    sub_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a sub-consultant."""
+    result = await db.execute(select(SubConsultant).where(SubConsultant.id == sub_id))
+    sub = result.scalar_one_or_none()
+
+    if not sub:
+        raise HTTPException(404, "Sub-consultant not found")
+
+    await db.delete(sub)
+    await db.commit()
+
+    return {"status": "deleted", "id": str(sub_id)}
+
+
 @router.patch("/{sub_id}/capacity")
 async def update_capacity(
     sub_id: UUID,

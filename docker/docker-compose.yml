@@ -23,9 +23,10 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.backend
     container_name: rfp-tool-backend
+    env_file:
+      - ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/rfp_tool
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     ports:
       - "8000:8000"
     volumes:
