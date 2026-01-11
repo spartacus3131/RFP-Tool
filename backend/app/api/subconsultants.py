@@ -1,33 +1,63 @@
 """
 Sub-Consultants API - Manage partner registry and matching.
 """
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field, field_validator, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional, List
 from uuid import UUID
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 from app.models.database import get_db
 from app.models.subconsultant import SubConsultant, SubConsultantTier, CapacityStatus
+from app.models.user import User
+from app.auth import get_current_active_user
 
 
 router = APIRouter()
 
 
+def escape_like_pattern(value: str) -> str:
+    """Escape special characters for LIKE/ILIKE queries to prevent injection."""
+    # Escape %, _, and \ which are special in LIKE patterns
+    return value.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
+
+def verify_subconsultant_access(sub: SubConsultant, user: User) -> bool:
+    """Verify user has access to sub-consultant based on organization."""
+    if user.is_superuser:
+        return True
+    if not sub.organization_id:
+        return True
+    if not user.organization:
+        return True
+    return sub.organization_id == user.organization
+
+
 class SubConsultantCreate(BaseModel):
-    company_name: str
-    discipline: str
-    tier: str = "tier_1"
-    primary_contact_name: Optional[str] = None
-    primary_contact_email: Optional[str] = None
-    primary_contact_phone: Optional[str] = None
-    past_joint_projects: int = 0
-    win_rate_together: Optional[float] = None
-    typical_fee_range_low: Optional[int] = None
-    typical_fee_range_high: Optional[int] = None
-    notes: Optional[str] = None
-    preferred_project_types: Optional[List[str]] = None
+    company_name: str = Field(..., min_length=1, max_length=255)
+    discipline: str = Field(..., min_length=1, max_length=100)
+    tier: str = Field(default="tier_1", pattern="^tier_[12]$")
+    primary_contact_name: Optional[str] = Field(None, max_length=255)
+    primary_contact_email: Optional[EmailStr] = None
+    primary_contact_phone: Optional[str] = Field(None, max_length=50)
+    past_joint_projects: int = Field(default=0, ge=0, le=10000)
+    win_rate_together: Optional[float] = Field(None, ge=0, le=100)
+    typical_fee_range_low: Optional[int] = Field(None, ge=0, le=100000000)
+    typical_fee_range_high: Optional[int] = Field(None, ge=0, le=100000000)
+    notes: Optional[str] = Field(None, max_length=5000)
+    preferred_project_types: Optional[List[str]] = Field(None, max_length=20)
+
+    @field_validator('company_name', 'discipline', 'primary_contact_name', mode='before')
+    @classmethod
+    def strip_strings(cls, v):
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
 
 class SubConsultantResponse(BaseModel):
@@ -54,12 +84,16 @@ async def list_subconsultants(
     discipline: Optional[str] = None,
     tier: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """List all sub-consultants, optionally filtered by discipline or tier."""
-    query = select(SubConsultant)
+    # Multi-tenancy: filter by organization
+    org_filter = SubConsultant.organization_id == current_user.organization if current_user.organization else True
+    query = select(SubConsultant).where(org_filter)
 
     if discipline:
-        query = query.where(SubConsultant.discipline.ilike(f"%{discipline}%"))
+        safe_discipline = escape_like_pattern(discipline)
+        query = query.where(SubConsultant.discipline.ilike(f"%{safe_discipline}%"))
     if tier:
         query = query.where(SubConsultant.tier == SubConsultantTier(tier))
 
@@ -87,9 +121,12 @@ async def list_subconsultants(
 
 
 @router.post("/", response_model=SubConsultantResponse)
+@limiter.limit("30/minute")
 async def create_subconsultant(
+    request: Request,
     sub: SubConsultantCreate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """Add a new sub-consultant to the registry."""
     subconsultant = SubConsultant(
@@ -105,6 +142,8 @@ async def create_subconsultant(
         typical_fee_range_high=sub.typical_fee_range_high,
         notes=sub.notes,
         preferred_project_types=sub.preferred_project_types,
+        # Multi-tenancy: link to user's organization
+        organization_id=current_user.organization,
     )
 
     db.add(subconsultant)
@@ -132,18 +171,24 @@ async def create_subconsultant(
 async def match_subconsultants(
     disciplines: str,  # Comma-separated list
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """
     Find matching sub-consultants for given disciplines.
 
     Returns Tier 1 and Tier 2 partners for each discipline.
     """
+    # Multi-tenancy: filter by organization
+    org_filter = SubConsultant.organization_id == current_user.organization if current_user.organization else True
+
     discipline_list = [d.strip() for d in disciplines.split(",")]
     results = {}
 
     for disc in discipline_list:
+        safe_disc = escape_like_pattern(disc)
         query = select(SubConsultant).where(
-            SubConsultant.discipline.ilike(f"%{disc}%")
+            org_filter,
+            SubConsultant.discipline.ilike(f"%{safe_disc}%")
         ).order_by(SubConsultant.tier, SubConsultant.win_rate_together.desc())
 
         result = await db.execute(query)
@@ -186,6 +231,7 @@ async def match_subconsultants(
 async def get_subconsultant(
     sub_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """Get a single sub-consultant by ID."""
     result = await db.execute(select(SubConsultant).where(SubConsultant.id == sub_id))
@@ -193,6 +239,10 @@ async def get_subconsultant(
 
     if not sub:
         raise HTTPException(404, "Sub-consultant not found")
+
+    # Multi-tenancy: verify organization access
+    if not verify_subconsultant_access(sub, current_user):
+        raise HTTPException(403, "Access denied")
 
     return SubConsultantResponse(
         id=str(sub.id),
@@ -216,6 +266,7 @@ async def update_subconsultant(
     sub_id: UUID,
     updates: SubConsultantCreate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """Update a sub-consultant."""
     result = await db.execute(select(SubConsultant).where(SubConsultant.id == sub_id))
@@ -223,6 +274,10 @@ async def update_subconsultant(
 
     if not sub:
         raise HTTPException(404, "Sub-consultant not found")
+
+    # Multi-tenancy: verify organization access
+    if not verify_subconsultant_access(sub, current_user):
+        raise HTTPException(403, "Access denied")
 
     sub.company_name = updates.company_name
     sub.discipline = updates.discipline
@@ -261,6 +316,7 @@ async def update_subconsultant(
 async def delete_subconsultant(
     sub_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """Delete a sub-consultant."""
     result = await db.execute(select(SubConsultant).where(SubConsultant.id == sub_id))
@@ -268,6 +324,10 @@ async def delete_subconsultant(
 
     if not sub:
         raise HTTPException(404, "Sub-consultant not found")
+
+    # Multi-tenancy: verify organization access
+    if not verify_subconsultant_access(sub, current_user):
+        raise HTTPException(403, "Access denied")
 
     await db.delete(sub)
     await db.commit()
@@ -280,6 +340,7 @@ async def update_capacity(
     sub_id: UUID,
     status: str,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """Update a sub-consultant's capacity status."""
     result = await db.execute(select(SubConsultant).where(SubConsultant.id == sub_id))
@@ -287,6 +348,10 @@ async def update_capacity(
 
     if not sub:
         raise HTTPException(404, "Sub-consultant not found")
+
+    # Multi-tenancy: verify organization access
+    if not verify_subconsultant_access(sub, current_user):
+        raise HTTPException(403, "Access denied")
 
     try:
         sub.capacity_status = CapacityStatus(status)

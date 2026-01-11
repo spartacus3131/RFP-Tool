@@ -9,35 +9,54 @@ from datetime import datetime, timedelta
 
 from app.models.database import get_db
 from app.models.rfp import RFPDocument, RFPStatus
+from app.models.user import User
+from app.auth import get_current_active_user
 
 
 router = APIRouter()
 
 
+def escape_like_pattern(value: str) -> str:
+    """Escape special characters for LIKE/ILIKE queries."""
+    return value.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
+
 @router.get("/")
 async def get_dashboard(
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """
     Get dashboard overview with stats and recent RFPs.
     """
-    # Count by status
+    # Get user's organization for filtering (multi-tenancy)
+    org_filter = RFPDocument.organization_id == current_user.organization if current_user.organization else True
+
+    # Count by status (filtered by organization)
     status_counts = {}
     for status in RFPStatus:
         result = await db.execute(
-            select(func.count(RFPDocument.id)).where(RFPDocument.status == status)
+            select(func.count(RFPDocument.id)).where(
+                RFPDocument.status == status,
+                org_filter
+            )
         )
         status_counts[status.value] = result.scalar() or 0
 
-    # Total RFPs
-    total_result = await db.execute(select(func.count(RFPDocument.id)))
+    # Total RFPs (filtered by organization)
+    total_result = await db.execute(
+        select(func.count(RFPDocument.id)).where(org_filter)
+    )
     total = total_result.scalar() or 0
 
-    # Recent RFPs (last 30 days)
+    # Recent RFPs (last 30 days, filtered by organization)
     thirty_days_ago = datetime.utcnow() - timedelta(days=30)
     recent_result = await db.execute(
         select(RFPDocument)
-        .where(RFPDocument.created_at >= thirty_days_ago)
+        .where(
+            RFPDocument.created_at >= thirty_days_ago,
+            org_filter
+        )
         .order_by(RFPDocument.created_at.desc())
         .limit(10)
     )
@@ -77,11 +96,14 @@ async def list_rfps(
     limit: int = 50,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """
     List all RFPs with optional filters.
     """
-    query = select(RFPDocument).order_by(RFPDocument.created_at.desc())
+    # Multi-tenancy: filter by organization
+    org_filter = RFPDocument.organization_id == current_user.organization if current_user.organization else True
+    query = select(RFPDocument).where(org_filter).order_by(RFPDocument.created_at.desc())
 
     if status:
         try:
@@ -90,7 +112,8 @@ async def list_rfps(
             pass
 
     if client:
-        query = query.where(RFPDocument.client_name.ilike(f"%{client}%"))
+        safe_client = escape_like_pattern(client)
+        query = query.where(RFPDocument.client_name.ilike(f"%{safe_client}%"))
 
     query = query.offset(offset).limit(limit)
     result = await db.execute(query)
@@ -121,6 +144,7 @@ async def list_rfps(
 async def get_upcoming_deadlines(
     days: int = 14,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """
     Get RFPs with submission deadlines in the next N days.
@@ -128,8 +152,12 @@ async def get_upcoming_deadlines(
     now = datetime.utcnow()
     cutoff = now + timedelta(days=days)
 
+    # Multi-tenancy: filter by organization
+    org_filter = RFPDocument.organization_id == current_user.organization if current_user.organization else True
+
     result = await db.execute(
         select(RFPDocument)
+        .where(org_filter)
         .where(RFPDocument.submission_deadline >= now)
         .where(RFPDocument.submission_deadline <= cutoff)
         .where(RFPDocument.status.not_in([RFPStatus.GO, RFPStatus.NO_GO]))

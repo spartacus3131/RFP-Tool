@@ -40,6 +40,9 @@ class SubConsultant(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Multi-tenancy: organization isolation
+    organization_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+
     # Company info
     company_name: Mapped[str] = mapped_column(String(512))
     discipline: Mapped[str] = mapped_column(String(256))  # e.g., "Geotechnical Engineering"

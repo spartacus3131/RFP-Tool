@@ -19,6 +19,10 @@ import {
   Briefcase,
   DollarSign,
   TrendingUp,
+  MessageCircleQuestion,
+  Hash,
+  CalendarClock,
+  Target,
 } from 'lucide-react'
 import { rfpApi, subConsultantsApi, budgetApi } from '../api/client'
 import { Button, StatusBadge, Badge } from '../components/ui'
@@ -30,6 +34,19 @@ interface ExtractionField {
   source_text: string | null
   confidence: number
   verified: boolean
+}
+
+interface Contradiction {
+  id: string
+  type: 'numerical' | 'timeline' | 'scope'
+  description: string
+  statement_a: string
+  statement_a_page: number | null
+  statement_b: string
+  statement_b_page: number | null
+  clarifying_question: string
+  is_helpful: boolean | null
+  feedback_at: string | null
 }
 
 interface RFPDetail {
@@ -57,6 +74,7 @@ interface RFPDetail {
     risk_flags: string[] | null
   }
   extractions: ExtractionField[]
+  contradictions: Contradiction[]
   decision_notes: string | null
   quick_scan_recommendation: string | null
 }
@@ -207,6 +225,104 @@ function BudgetMatchCard({ match }: { match: BudgetMatch }) {
   )
 }
 
+function ContradictionCard({
+  contradiction,
+  onFeedback,
+  isSubmitting,
+}: {
+  contradiction: Contradiction
+  onFeedback: (id: string, isHelpful: boolean) => void
+  isSubmitting: boolean
+}) {
+  const typeIcons = {
+    numerical: Hash,
+    timeline: CalendarClock,
+    scope: Target,
+  }
+  const typeColors = {
+    numerical: 'text-blue-400 bg-blue-500/10',
+    timeline: 'text-purple-400 bg-purple-500/10',
+    scope: 'text-orange-400 bg-orange-500/10',
+  }
+
+  const TypeIcon = typeIcons[contradiction.type]
+
+  return (
+    <div className="panel p-4 border-amber-500/30 bg-amber-500/5 space-y-3">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          <span className={`px-2 py-1 rounded text-ui-xs font-medium flex items-center gap-1 ${typeColors[contradiction.type]}`}>
+            <TypeIcon className="h-3 w-3" />
+            {contradiction.type.charAt(0).toUpperCase() + contradiction.type.slice(1)}
+          </span>
+        </div>
+        {/* Feedback buttons */}
+        <div className="flex items-center gap-2">
+          {contradiction.is_helpful === null ? (
+            <>
+              <button
+                onClick={() => onFeedback(contradiction.id, true)}
+                disabled={isSubmitting}
+                className="p-1.5 rounded hover:bg-green-500/20 text-text-tertiary hover:text-green-400 transition-colors disabled:opacity-50"
+                title="Helpful"
+              >
+                <ThumbsUp className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => onFeedback(contradiction.id, false)}
+                disabled={isSubmitting}
+                className="p-1.5 rounded hover:bg-red-500/20 text-text-tertiary hover:text-red-400 transition-colors disabled:opacity-50"
+                title="Not helpful"
+              >
+                <ThumbsDown className="h-4 w-4" />
+              </button>
+            </>
+          ) : (
+            <span className={`text-ui-xs ${contradiction.is_helpful ? 'text-green-400' : 'text-red-400'}`}>
+              {contradiction.is_helpful ? 'Marked helpful' : 'Marked not helpful'}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Description */}
+      <p className="text-text-primary font-medium">{contradiction.description}</p>
+
+      {/* Conflicting statements */}
+      <div className="space-y-2">
+        <div className="p-2 bg-bg-tertiary rounded border-l-2 border-red-500/50">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-ui-xs text-text-tertiary">Statement A</span>
+            {contradiction.statement_a_page && (
+              <span className="text-ui-xs text-accent-primary">Page {contradiction.statement_a_page}</span>
+            )}
+          </div>
+          <p className="text-ui-sm text-text-secondary italic">"{contradiction.statement_a}"</p>
+        </div>
+        <div className="p-2 bg-bg-tertiary rounded border-l-2 border-red-500/50">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-ui-xs text-text-tertiary">Statement B</span>
+            {contradiction.statement_b_page && (
+              <span className="text-ui-xs text-accent-primary">Page {contradiction.statement_b_page}</span>
+            )}
+          </div>
+          <p className="text-ui-sm text-text-secondary italic">"{contradiction.statement_b}"</p>
+        </div>
+      </div>
+
+      {/* Clarifying question */}
+      <div className="p-3 bg-accent-primary/10 rounded border border-accent-primary/30">
+        <div className="flex items-center gap-2 text-accent-primary text-ui-sm mb-1">
+          <MessageCircleQuestion className="h-4 w-4" />
+          Suggested Clarifying Question
+        </div>
+        <p className="text-text-primary text-ui-sm">{contradiction.clarifying_question}</p>
+      </div>
+    </div>
+  )
+}
+
 export default function RFPDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -257,6 +373,18 @@ export default function RFPDetail() {
       queryClient.invalidateQueries({ queryKey: ['rfp', id] })
     },
   })
+
+  const feedbackMutation = useMutation({
+    mutationFn: ({ contradictionId, isHelpful }: { contradictionId: string; isHelpful: boolean }) =>
+      rfpApi.submitContradictionFeedback(id!, contradictionId, isHelpful),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rfp', id] })
+    },
+  })
+
+  const handleContradictionFeedback = (contradictionId: string, isHelpful: boolean) => {
+    feedbackMutation.mutate({ contradictionId, isHelpful })
+  }
 
   const handleExtract = () => {
     setIsExtracting(true)
@@ -378,6 +506,33 @@ export default function RFPDetail() {
           <div className="space-y-3">
             {budgetMatches.slice(0, 2).map((match, i) => (
               <BudgetMatchCard key={i} match={match} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Contradictions Section */}
+      {rfp.contradictions && rfp.contradictions.length > 0 && (
+        <div className="panel p-4 border-amber-500/30 bg-amber-500/5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2 text-amber-400">
+              <AlertTriangle className="h-5 w-5" />
+              <span className="font-medium">
+                {rfp.contradictions.length} Contradiction{rfp.contradictions.length !== 1 ? 's' : ''} Found
+              </span>
+            </div>
+            <span className="text-ui-xs text-text-tertiary">
+              Review and clarify with client before submitting
+            </span>
+          </div>
+          <div className="space-y-4">
+            {rfp.contradictions.map((contradiction) => (
+              <ContradictionCard
+                key={contradiction.id}
+                contradiction={contradiction}
+                onFeedback={handleContradictionFeedback}
+                isSubmitting={feedbackMutation.isPending}
+              />
             ))}
           </div>
         </div>

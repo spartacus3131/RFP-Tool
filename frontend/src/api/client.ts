@@ -55,6 +55,12 @@ export const rfpApi = {
     const response = await api.post(`/api/rfp/${id}/decide`, { decision, notes })
     return response.data
   },
+  submitContradictionFeedback: async (rfpId: string, contradictionId: string, isHelpful: boolean) => {
+    const response = await api.post(`/api/rfp/${rfpId}/contradictions/${contradictionId}/feedback`, {
+      is_helpful: isHelpful,
+    })
+    return response.data
+  },
 }
 
 // Dashboard API

@@ -1,19 +1,69 @@
 """
 Capital Budget API - Upload budgets, extract line items, match to RFPs.
 """
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from typing import Optional, List
 from uuid import UUID
+import uuid
 import os
 import aiofiles
+import re
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 from app.models.database import get_db
+from app.models.user import User
+from app.auth import get_current_active_user
+
+# File upload security constants
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB max
+PDF_MAGIC = b'%PDF'
+
+
+def sanitize_filename(filename: str) -> str:
+    """Sanitize filename to prevent path traversal attacks."""
+    filename = os.path.basename(filename)
+    filename = re.sub(r'[^\w\-_\.]', '_', filename)
+    filename = filename.lstrip('.')
+    return filename if filename else 'unnamed'
+
+
+def sanitize_path_component(value: str) -> str:
+    """Sanitize a path component (like municipality name)."""
+    # Remove any path separators and special characters
+    value = re.sub(r'[^\w\-_ ]', '', value)
+    value = value.strip()
+    return value[:50] if value else 'unknown'
+
+
+def escape_like_pattern(value: str) -> str:
+    """Escape special characters for LIKE/ILIKE queries."""
+    return value.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
+
 from app.models.budget import CapitalBudget, BudgetLineItem
+
+
 from app.services.pdf_extractor import extract_text_from_pdf
 from app.services.budget_extractor import extract_budget_items, match_rfp_to_budget
+from app.models.audit_log import AuditAction
+from app.services.audit import log_action, get_client_ip, get_user_agent
+
+
+def verify_budget_access(budget: CapitalBudget, user) -> bool:
+    """Verify user has access to budget based on organization."""
+    if user.is_superuser:
+        return True
+    if not budget.organization_id:
+        return True
+    if not user.organization:
+        return True
+    return budget.organization_id == user.organization
 
 
 router = APIRouter()
@@ -50,25 +100,54 @@ class BudgetLineItemResponse(BaseModel):
 
 
 @router.post("/upload")
+@limiter.limit("5/minute")
 async def upload_budget(
+    request: Request,
     file: UploadFile = File(...),
-    municipality: str = "Unknown Municipality",
-    fiscal_year: str = "2024",
+    municipality: str = Field(default="Unknown Municipality", max_length=255),
+    fiscal_year: str = Field(default="2024", max_length=10),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """
     Upload a capital budget PDF for extraction.
-    
+
     Extracts line items with project names, funding amounts, and descriptions
     for semantic matching to RFP scopes.
     """
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Only PDF files are supported")
 
+    # Read file content
+    content = await file.read()
+
+    # Validate file size
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(400, f"File too large. Maximum size is {MAX_FILE_SIZE // (1024*1024)}MB")
+
+    # Validate file magic bytes (prevent fake extensions)
+    if content[:4] != PDF_MAGIC:
+        raise HTTPException(400, "File content does not match PDF format")
+
+    # Sanitize all path components to prevent path traversal attacks
+    safe_municipality = sanitize_path_component(municipality)
+    safe_fiscal_year = sanitize_path_component(fiscal_year)
+    safe_filename = sanitize_filename(file.filename)
+    unique_filename = f"{uuid.uuid4().hex[:8]}_{safe_municipality}_{safe_fiscal_year}_{safe_filename}"
+
+    # Build and validate file path
+    budgets_dir = os.path.join(UPLOAD_DIR, "budgets")
+    os.makedirs(budgets_dir, exist_ok=True)
+    file_path = os.path.join(budgets_dir, unique_filename)
+
+    # Verify path is within allowed directory
+    abs_budgets_dir = os.path.abspath(budgets_dir)
+    abs_file_path = os.path.abspath(file_path)
+    if not abs_file_path.startswith(abs_budgets_dir):
+        raise HTTPException(400, "Invalid file path")
+
     # Save file
-    file_path = os.path.join(UPLOAD_DIR, "budgets", f"{municipality}_{fiscal_year}_{file.filename}")
     async with aiofiles.open(file_path, "wb") as f:
-        content = await file.read()
         await f.write(content)
 
     # Extract text
@@ -77,7 +156,7 @@ async def upload_budget(
     if not extraction_result.success:
         raise HTTPException(500, f"Failed to extract text: {extraction_result.error}")
 
-    # Create budget record
+    # Create budget record (with multi-tenancy support)
     budget = CapitalBudget(
         municipality=municipality,
         fiscal_year=fiscal_year,
@@ -85,9 +164,25 @@ async def upload_budget(
         file_path=file_path,
         raw_text=extraction_result.text,
         page_count=extraction_result.page_count,
+        # Multi-tenancy: link to user's organization
+        organization_id=current_user.organization,
     )
     
     db.add(budget)
+
+    # Audit log: budget upload
+    await log_action(
+        db=db,
+        action=AuditAction.UPLOAD,
+        user_id=current_user.id,
+        user_email=current_user.email,
+        resource_type="budget",
+        resource_id=str(budget.id),
+        details={"filename": file.filename, "municipality": municipality, "fiscal_year": fiscal_year},
+        ip_address=get_client_ip(request),
+        user_agent=get_user_agent(request),
+    )
+
     await db.commit()
     await db.refresh(budget)
 
@@ -102,9 +197,12 @@ async def upload_budget(
 
 
 @router.post("/{budget_id}/extract")
+@limiter.limit("10/minute")
 async def extract_budget_line_items(
+    request: Request,
     budget_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """
     Extract line items from a budget using Claude AI.
@@ -114,10 +212,14 @@ async def extract_budget_line_items(
     """
     result = await db.execute(select(CapitalBudget).where(CapitalBudget.id == budget_id))
     budget = result.scalar_one_or_none()
-    
+
     if not budget:
         raise HTTPException(404, "Budget not found")
-    
+
+    # Multi-tenancy: verify organization access
+    if not verify_budget_access(budget, current_user):
+        raise HTTPException(403, "Access denied")
+
     if not budget.raw_text:
         raise HTTPException(400, "Budget has no extracted text")
 
@@ -164,12 +266,16 @@ async def extract_budget_line_items(
 async def list_budgets(
     municipality: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """List all capital budgets."""
-    query = select(CapitalBudget)
-    
+    # Multi-tenancy: filter by organization
+    org_filter = CapitalBudget.organization_id == current_user.organization if current_user.organization else True
+    query = select(CapitalBudget).where(org_filter)
+
     if municipality:
-        query = query.where(CapitalBudget.municipality.ilike(f"%{municipality}%"))
+        safe_municipality = escape_like_pattern(municipality)
+        query = query.where(CapitalBudget.municipality.ilike(f"%{safe_municipality}%"))
     
     result = await db.execute(query)
     budgets = result.scalars().all()
@@ -198,8 +304,20 @@ async def list_budgets(
 async def get_budget_items(
     budget_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """Get all line items for a budget."""
+    # First verify budget access
+    budget_result = await db.execute(select(CapitalBudget).where(CapitalBudget.id == budget_id))
+    budget = budget_result.scalar_one_or_none()
+
+    if not budget:
+        raise HTTPException(404, "Budget not found")
+
+    # Multi-tenancy: verify organization access
+    if not verify_budget_access(budget, current_user):
+        raise HTTPException(403, "Access denied")
+
     result = await db.execute(
         select(BudgetLineItem).where(BudgetLineItem.budget_id == budget_id)
     )
@@ -223,6 +341,7 @@ async def get_budget_items(
 async def match_budget_to_rfp(
     rfp_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """
     Find budget line items that match an RFP's scope.

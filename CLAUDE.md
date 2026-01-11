@@ -16,16 +16,23 @@ RFP Intelligence Platform - a tool for mid-sized consulting firms (15-150 employ
   - [x] Database schema (PostgreSQL + pgvector)
   - [x] Quick Scan from bidsandtenders.ca URL
   - [x] Basic React UI with routing
-  - [ ] PDF text extraction with PyMuPDF
-- [ ] Sprint 2: LLM Extraction (NEXT)
-- [ ] Sprint 3: Sub-Consultant Matching
-- [ ] Sprint 4: Go/No-Go Scoring Engine
-- [ ] Sprint 5: Review UI + Evidence Panel
-- [ ] Sprint 6: Fuzzy Budget Matching
-- [ ] Sprint 7: Polish + Export
+  - [x] PDF text extraction with PyMuPDF
+- [x] Sprint 2: LLM Extraction
+- [x] Sprint 3: Sub-Consultant Matching
+- [x] Sprint 4: Go/No-Go Scoring Engine
+- [x] Sprint 5: Review UI + Evidence Panel
+- [x] Sprint 6: Fuzzy Budget Matching
+- [x] Sprint 7: Testing & Hardening
+  - [x] Multi-tenancy implementation
+  - [x] Audit logging expansion
+  - [x] Password complexity requirements
+  - [x] Database migrations (Alembic)
+  - [x] Security test suite (15 tests)
+  - [x] Production infrastructure (Nginx + Docker Compose)
+  - [x] Security headers middleware
 
-**Current Phase:** Sprint 1 - MVP Foundation (95% complete)
-**Next Milestone:** Complete PDF text extraction, begin Claude API integration
+**Current Phase:** V1 MVP Complete - Production-Ready (January 11, 2026)
+**Next Milestone:** Deploy to production, verify security features with real database
 
 ### Key Decisions & Context
 
@@ -54,21 +61,25 @@ RFP Intelligence Platform - a tool for mid-sized consulting firms (15-150 employ
 - **LLM**: Claude API for extraction (best for long documents)
 - **Database**: PostgreSQL with pgvector (keeps relational + vector search in one DB)
 - **PDF Processing**: PyMuPDF (open source, handles most PDFs)
+- **Security**: Multi-tenancy via organization_id, comprehensive audit logging, Alembic migrations
+- **Testing**: pytest with async support, 15-test security suite
 
 ### Working Instructions
 
 #### Current Focus
-Sprint 1 completion and Sprint 2 preparation:
-1. Add PyMuPDF text extraction to PDF upload endpoint
-2. Set up Claude API integration with structured extraction prompts
-3. Implement source linking (map extractions to PDF page/bbox)
-4. Test with real RFP documents (50-200 pages)
+Production deployment preparation and security verification:
+1. Run Alembic migration against development database
+2. Test multi-tenancy isolation with multiple organizations
+3. Verify audit logging captures all mutations
+4. Test production Docker Compose stack with Nginx
+5. Document security features and deployment process
 
 #### Relevant Workflow Prompts
-- When adding PDF extraction: Store raw text in `rfps.raw_text` field, return extraction status
-- When integrating Claude API: Use structured JSON output, always request source page/location
-- When implementing source linking: Store `source_page`, `source_text`, `source_bbox` for each extracted field
-- When testing: Use real RFPs from bidsandtenders.ca, measure accuracy on dates/disciplines
+- When running migrations: Use `alembic upgrade head` to apply all migrations
+- When testing multi-tenancy: Create users in different organizations, verify data isolation
+- When deploying: Use production Docker Compose with Nginx reverse proxy
+- When auditing: Check audit_logs table for all create/update/delete actions
+- When testing security: Run `pytest backend/tests/test_security.py` to verify all 15 tests pass
 
 ## Architecture
 

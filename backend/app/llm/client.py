@@ -7,7 +7,7 @@ import anthropic
 from dataclasses import dataclass
 from typing import Optional, Any
 
-from .prompts import build_extraction_prompt
+from .prompts import build_extraction_prompt, build_contradiction_prompt
 
 
 @dataclass
@@ -143,5 +143,80 @@ def parse_extraction_to_fields(extraction_data: dict) -> dict:
     
     if "insurance_requirements" in extraction_data:
         fields["insurance_requirements"] = extraction_data["insurance_requirements"].get("value")
-    
+
     return fields
+
+
+@dataclass
+class ContradictionResult:
+    """Result from Claude contradiction detection."""
+    success: bool
+    contradictions: list = None
+    error: Optional[str] = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+    def __post_init__(self):
+        if self.contradictions is None:
+            self.contradictions = []
+
+
+def detect_contradictions(rfp_text: str, model: str = "claude-sonnet-4-20250514") -> ContradictionResult:
+    """
+    Detect contradictions and inconsistencies in RFP text using Claude.
+
+    Args:
+        rfp_text: Full text extracted from the RFP PDF
+        model: Claude model to use
+
+    Returns:
+        ContradictionResult with list of detected contradictions or error
+    """
+    try:
+        client = get_client()
+        system_prompt, user_prompt = build_contradiction_prompt(rfp_text)
+
+        message = client.messages.create(
+            model=model,
+            max_tokens=8192,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+
+        # Extract the response text
+        response_text = message.content[0].text
+
+        # Parse JSON from response
+        # Handle potential markdown code blocks
+        if "```json" in response_text:
+            response_text = response_text.split("```json")[1].split("```")[0]
+        elif "```" in response_text:
+            response_text = response_text.split("```")[1].split("```")[0]
+
+        data = json.loads(response_text.strip())
+        contradictions = data.get("contradictions", [])
+
+        return ContradictionResult(
+            success=True,
+            contradictions=contradictions,
+            input_tokens=message.usage.input_tokens,
+            output_tokens=message.usage.output_tokens,
+        )
+
+    except json.JSONDecodeError as e:
+        return ContradictionResult(
+            success=False,
+            error=f"Failed to parse Claude response as JSON: {str(e)}",
+        )
+    except anthropic.APIError as e:
+        return ContradictionResult(
+            success=False,
+            error=f"Claude API error: {str(e)}",
+        )
+    except Exception as e:
+        return ContradictionResult(
+            success=False,
+            error=f"Contradiction detection failed: {str(e)}",
+        )

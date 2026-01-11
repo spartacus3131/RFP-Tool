@@ -24,12 +24,22 @@ class RFPSource(str, PyEnum):
     PDF_UPLOAD = "pdf_upload"  # From uploaded PDF
 
 
+class ContradictionType(str, PyEnum):
+    NUMERICAL = "numerical"      # e.g., "10 meetings" vs "15 meetings"
+    TIMELINE = "timeline"        # e.g., conflicting dates for same milestone
+    SCOPE = "scope"              # e.g., conflicting deliverable descriptions
+
+
 class RFPDocument(Base):
     __tablename__ = "rfp_documents"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Multi-tenancy: organization isolation
+    organization_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Source info
     source: Mapped[RFPSource] = mapped_column(Enum(RFPSource), default=RFPSource.PDF_UPLOAD)
@@ -97,6 +107,7 @@ class RFPDocument(Base):
 
     # Relationships
     extractions: Mapped[List["Extraction"]] = relationship("Extraction", back_populates="rfp", cascade="all, delete-orphan")
+    contradictions: Mapped[List["Contradiction"]] = relationship("Contradiction", back_populates="rfp", cascade="all, delete-orphan")
 
 
 class Extraction(Base):
@@ -124,3 +135,36 @@ class Extraction(Base):
 
     # Relationship
     rfp: Mapped["RFPDocument"] = relationship("RFPDocument", back_populates="extractions")
+
+
+class Contradiction(Base):
+    """Detected contradictions/inconsistencies within an RFP document."""
+    __tablename__ = "contradictions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    rfp_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("rfp_documents.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Type of contradiction
+    contradiction_type: Mapped[ContradictionType] = mapped_column(Enum(ContradictionType))
+
+    # Description of the contradiction
+    description: Mapped[str] = mapped_column(Text)
+
+    # First conflicting statement
+    statement_a: Mapped[str] = mapped_column(Text)
+    statement_a_page: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Second conflicting statement
+    statement_b: Mapped[str] = mapped_column(Text)
+    statement_b_page: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Suggested clarifying question to ask the client
+    clarifying_question: Mapped[str] = mapped_column(Text)
+
+    # User feedback on whether this contradiction was helpful
+    is_helpful: Mapped[Optional[bool]] = mapped_column(nullable=True)
+    feedback_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Relationship
+    rfp: Mapped["RFPDocument"] = relationship("RFPDocument", back_populates="contradictions")

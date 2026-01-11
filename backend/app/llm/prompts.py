@@ -131,18 +131,105 @@ Important:
 def build_extraction_prompt(rfp_text: str, max_chars: int = 150000) -> tuple[str, str]:
     """
     Build the extraction prompt with the RFP text.
-    
+
     Args:
         rfp_text: Full text extracted from the RFP PDF
         max_chars: Maximum characters to include (Claude has ~200K context)
-    
+
     Returns:
         Tuple of (system_prompt, user_prompt)
     """
     # Truncate if needed (leave room for response)
     if len(rfp_text) > max_chars:
         rfp_text = rfp_text[:max_chars] + "\n\n[DOCUMENT TRUNCATED - First {} characters shown]".format(max_chars)
-    
+
     user_prompt = EXTRACTION_USER_PROMPT.format(rfp_text=rfp_text)
-    
+
     return EXTRACTION_SYSTEM_PROMPT, user_prompt
+
+
+# --- Contradiction Detection Prompts ---
+
+CONTRADICTION_SYSTEM_PROMPT = """You are an expert RFP analyst specializing in identifying inconsistencies and contradictions within RFP documents. Your job is to find conflicting information that consultants need to clarify with the client before submitting a proposal.
+
+CRITICAL REQUIREMENTS:
+1. Only flag REAL contradictions - conflicting statements about the same thing
+2. For every contradiction, provide source page numbers for both conflicting statements
+3. Generate a professional clarifying question the consultant could ask the client
+4. Focus on contradictions that materially impact proposal preparation
+
+You will receive RFP text with page markers like "--- PAGE X ---". Use these to track source pages."""
+
+CONTRADICTION_USER_PROMPT = """Analyze the following RFP document for contradictions and inconsistencies.
+
+<rfp_document>
+{rfp_text}
+</rfp_document>
+
+Scan the ENTIRE document for the following types of contradictions:
+
+1. **NUMERICAL MISMATCHES**: Different numbers for the same item
+   - Example: "10 progress meetings" in narrative vs "15 meetings" in a table
+   - Example: "5 draft submissions" in one section vs "3 drafts" elsewhere
+   - Example: Conflicting budget figures, team sizes, or quantities
+
+2. **TIMELINE CONFLICTS**: Inconsistent dates or durations
+   - Example: Different submission deadlines in different sections
+   - Example: Project duration stated as "12 months" but schedule shows 18 months
+   - Example: Conflicting milestone dates
+
+3. **SCOPE AMBIGUITIES**: Conflicting descriptions of deliverables or requirements
+   - Example: Scope says "full environmental assessment" but budget assumes "desktop review only"
+   - Example: One section requires certified professionals, another doesn't mention it
+   - Example: Contradictory statements about what's in/out of scope
+
+For each contradiction found, provide:
+- Type (numerical, timeline, or scope)
+- Description of what's contradicting
+- Both conflicting statements with their page numbers
+- A professional clarifying question to ask the client
+
+Respond with valid JSON in this exact format:
+{{
+  "contradictions": [
+    {{
+      "type": "numerical | timeline | scope",
+      "description": "Brief description of the contradiction",
+      "statement_a": {{
+        "text": "Exact quote or close paraphrase from the document",
+        "page": number
+      }},
+      "statement_b": {{
+        "text": "Exact quote or close paraphrase from the document",
+        "page": number
+      }},
+      "clarifying_question": "Professional question to ask the client to resolve this"
+    }}
+  ]
+}}
+
+Important:
+- Return an empty array if no contradictions are found: {{"contradictions": []}}
+- Only include genuine contradictions, not minor wording differences
+- Questions should be professional and specific, referencing the page numbers
+- Focus on contradictions that would affect proposal pricing, scheduling, or scope"""
+
+
+def build_contradiction_prompt(rfp_text: str, max_chars: int = 150000) -> tuple[str, str]:
+    """
+    Build the contradiction detection prompt with the RFP text.
+
+    Args:
+        rfp_text: Full text extracted from the RFP PDF
+        max_chars: Maximum characters to include
+
+    Returns:
+        Tuple of (system_prompt, user_prompt)
+    """
+    # Truncate if needed (leave room for response)
+    if len(rfp_text) > max_chars:
+        rfp_text = rfp_text[:max_chars] + "\n\n[DOCUMENT TRUNCATED - First {} characters shown]".format(max_chars)
+
+    user_prompt = CONTRADICTION_USER_PROMPT.format(rfp_text=rfp_text)
+
+    return CONTRADICTION_SYSTEM_PROMPT, user_prompt
